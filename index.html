@@ -1,0 +1,802 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>La Lupa - Podcast Player</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        body {
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            background-color: #f0f2f5;
+            overflow: hidden; /* Importante para evitar scroll nativo de la página */
+            margin: 0;
+            padding: 20px 0;
+            /* Mejora para móviles: evita rebote del scroll en iOS */
+            overscroll-behavior: none; 
+        }
+
+        .main-container {
+            display: flex;
+            width: 100%;
+            max-width: 1200px;
+            /* Usamos min-height en vez de height fijo para evitar cortes en pantallas raras */
+            min-height: 80vh; 
+            gap: 60px;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* --- Estructura del Carrusel --- */
+        .carousel-section {
+            flex: 1;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .carousel-container {
+            width: 100%;
+            max-width: 500px;
+            height: 70vh;
+            position: relative;
+            perspective: 1000px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            /* Asegura que los toques se registren bien */
+            touch-action: pan-y; 
+        }
+
+        .carousel-track {
+            width: 450px;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            position: relative;
+            transform-style: preserve-3d;
+            transition: transform 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+        }
+
+        /* --- Diseño de la Tarjeta --- */
+        .card {
+            position: absolute;
+            width: 400px;
+            height: 225px;
+            background: #1a1a2e;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: 0 20px 40px rgba(0, 0, 0, 0.25);
+            transition: all 0.8s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+            /* cursor: pointer;  <-- Quitamos cursor pointer global ya que no son clicables para navegar */
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            display: flex;
+            flex-direction: column;
+        }
+
+        /* Solo la tarjeta central tendrá cursor normal o auto, las otras default */
+        .card.center {
+            cursor: default;
+        }
+
+        /* Estilo para tarjetas que son solo imagen (Intro) */
+        .card img.full-image {
+            width: 100%;
+            height: 100%;
+            object-fit: cover;
+            display: block;
+        }
+
+        /* Fondo de la tarjeta con la imagen original difuminada (para players) */
+        .card-bg {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background-size: cover;
+            background-position: center;
+            opacity: 0.4;
+            filter: blur(2px);
+            z-index: 0;
+            transition: opacity 0.5s;
+        }
+
+        /* Contenedor del reproductor */
+        .audio-player {
+            position: relative;
+            z-index: 2;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            flex-direction: column;
+            justify-content: space-between;
+            padding: 20px;
+            background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.8));
+            opacity: 0.6;
+            pointer-events: none;
+            transition: opacity 0.5s;
+        }
+
+        /* Estado Activo (Centro) */
+        .card.center .audio-player {
+            opacity: 1;
+            pointer-events: auto;
+        }
+        
+        .card.center .card-bg {
+            opacity: 0.6;
+            filter: blur(0px);
+        }
+
+        /* --- Controles de Audio --- */
+        .player-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+        }
+
+        .player-status {
+            font-size: 0.8rem;
+            text-transform: uppercase;
+            letter-spacing: 2px;
+            color: #fff;
+            background: rgba(8, 42, 123, 0.8);
+            padding: 4px 10px;
+            border-radius: 12px;
+            font-weight: bold;
+        }
+
+        .play-wrapper {
+            flex: 1;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        .btn-control {
+            background: none;
+            border: none;
+            cursor: pointer;
+            color: white;
+            transition: transform 0.2s;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            filter: drop-shadow(0 2px 4px rgba(0,0,0,0.5));
+        }
+
+        .btn-play {
+            width: 60px;
+            height: 60px;
+            background: white;
+            border-radius: 50%;
+            color: #1a1a2e;
+        }
+
+        .btn-play svg {
+            width: 24px;
+            height: 24px;
+            fill: currentColor;
+            margin-left: 2px;
+        }
+        
+        .btn-play.playing svg {
+            margin-left: 0;
+        }
+
+        .btn-play:hover {
+            transform: scale(1.1);
+        }
+
+        .btn-restart {
+            position: absolute;
+            top: 20px;
+            right: 20px;
+            opacity: 0.7;
+        }
+        
+        .btn-restart:hover {
+            opacity: 1;
+            transform: rotate(-30deg);
+        }
+
+        .progress-container {
+            width: 100%;
+        }
+
+        .time-info {
+            display: flex;
+            justify-content: space-between;
+            color: #ccc;
+            font-size: 0.75rem;
+            margin-bottom: 5px;
+            font-family: monospace;
+        }
+
+        input[type=range] {
+            -webkit-appearance: none;
+            width: 100%;
+            background: transparent;
+            cursor: pointer;
+        }
+        input[type=range]:focus { outline: none; }
+        input[type=range]::-webkit-slider-runnable-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+        input[type=range]::-webkit-slider-thumb {
+            height: 12px;
+            width: 12px;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+            -webkit-appearance: none;
+            margin-top: -4px;
+            box-shadow: 0 0 10px rgba(0,0,0,0.5);
+        }
+        input[type=range]::-moz-range-track {
+            width: 100%;
+            height: 4px;
+            cursor: pointer;
+            background: rgba(255,255,255,0.3);
+            border-radius: 2px;
+        }
+        input[type=range]::-moz-range-thumb {
+            height: 12px;
+            width: 12px;
+            border: none;
+            border-radius: 50%;
+            background: #fff;
+            cursor: pointer;
+        }
+
+        /* --- Posiciones 3D de las tarjetas --- */
+        .card.center {
+            z-index: 10;
+            transform: scale(1.1) translateZ(0);
+        }
+        /* Efecto adicional para imagen simple en centro */
+        .card.center img.full-image {
+            filter: none;
+        }
+        
+        .card.up-2 {
+            z-index: 1;
+            transform: translateY(-300px) scale(0.8) translateZ(-300px);
+            opacity: 0.7;
+        }
+        .card.up-2 img.full-image { filter: grayscale(100%); }
+
+        .card.up-1 {
+            z-index: 5;
+            transform: translateY(-150px) scale(0.9) translateZ(-100px);
+            opacity: 0.9;
+        }
+        .card.up-1 img.full-image { filter: grayscale(100%); }
+
+        .card.down-1 {
+            z-index: 5;
+            transform: translateY(150px) scale(0.9) translateZ(-100px);
+            opacity: 0.9;
+        }
+        .card.down-1 img.full-image { filter: grayscale(100%); }
+
+        .card.down-2 {
+            z-index: 1;
+            transform: translateY(300px) scale(0.8) translateZ(-300px);
+            opacity: 0.7;
+        }
+        .card.down-2 img.full-image { filter: grayscale(100%); }
+
+        .card.hidden {
+            opacity: 0;
+            pointer-events: none;
+        }
+
+        /* --- Controles Sección Derecha --- */
+        .controls-section {
+            flex: 1;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            gap: 40px;
+            padding-left: 40px;
+        }
+
+        .member-info {
+            text-align: center;
+            margin-top: 20px;
+            transition: all 0.5s ease-out;
+        }
+
+        .member-name {
+            color: rgb(8, 42, 123);
+            font-size: 2rem;
+            font-weight: 700;
+            margin-bottom: 8px;
+            position: relative;
+            display: inline-block;
+        }
+
+        .member-name::before, .member-name::after {
+            content: "";
+            position: absolute;
+            top: 100%;
+            width: 80px;
+            height: 2px;
+            background: rgb(8, 42, 123);
+        }
+        .member-name::before { left: -100px; }
+        .member-name::after { right: -100px; }
+
+        .member-role {
+            color: #848696;
+            font-size: 1.2rem;
+            font-weight: 500;
+            opacity: 0.8;
+            text-transform: uppercase;
+            letter-spacing: 0.1em;
+            padding: 5px 0;
+            margin-top: -10px;
+            position: relative;
+        }
+
+        .dots {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin-top: 30px;
+        }
+
+        .dot {
+            width: 12px;
+            height: 12px;
+            border-radius: 50%;
+            background: rgba(8, 42, 123, 0.2);
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .dot.active {
+            background: rgb(8, 42, 123);
+            transform: scale(1.2);
+        }
+
+        /* Scroll indicator */
+        .scroll-hint {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            font-size: 0.8rem;
+            color: #848696;
+            opacity: 0.6;
+            pointer-events: none;
+            animation: pulse 2s infinite;
+        }
+        @keyframes pulse {
+            0% { opacity: 0.3; }
+            50% { opacity: 0.8; }
+            100% { opacity: 0.3; }
+        }
+
+        @media (max-width: 768px) {
+            body { padding: 10px 0; }
+            .main-container { flex-direction: column; height: auto; gap: 20px; }
+            .carousel-section { width: 100%; }
+            .controls-section { width: 100%; padding-left: 0; }
+            .carousel-container { height: 60vh; max-width: 350px; }
+            .carousel-track { width: 350px; }
+            .card { width: 320px; height: 180px; }
+            
+            .card.up-2 { transform: translateY(-160px) scale(0.8) translateZ(-300px); }
+            .card.up-1 { transform: translateY(-80px) scale(0.9) translateZ(-100px); }
+            .card.down-1 { transform: translateY(80px) scale(0.9) translateZ(-100px); }
+            .card.down-2 { transform: translateY(160px) scale(0.8) translateZ(-300px); }
+
+            .scroll-hint { display: none; }
+        }
+    </style>
+</head>
+<body>
+    <div class="main-container">
+        <div class="carousel-section">
+            <div class="carousel-container">
+                <div class="carousel-track">
+                    <!-- Card 0: INTRO (Solo imagen) -->
+                    <div class="card" data-index="0">
+                        <img src="https://ik.imagekit.io/gopichakradhar/luffy/o1.jpeg" alt="Intro" class="full-image">
+                    </div>
+
+                    <!-- Card 1: Player -->
+                    <div class="card" data-index="1">
+                        <div class="card-bg" style="background-image: url('https://ik.imagekit.io/gopichakradhar/luffy/o2.jpeg');"></div>
+                        <div class="audio-player">
+                            <div class="player-header">
+                                <span class="player-status">Capítulo 1</span>
+                                <button class="btn-control btn-restart" onclick="restartAudio(event, 1)">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                </button>
+                            </div>
+                            <div class="play-wrapper">
+                                <button class="btn-control btn-play" id="playBtn-1" onclick="togglePlay(event, 1)">
+                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </button>
+                            </div>
+                            <div class="progress-container">
+                                <div class="time-info"><span id="currentTime-1">0:00</span><span id="duration-1">0:00</span></div>
+                                <input type="range" id="progress-1" value="0" min="0" step="1" oninput="seekAudio(event, 1)">
+                            </div>
+                            <audio id="audio-1" src="audio/capitulo1.mp3" preload="metadata"></audio>
+                        </div>
+                    </div>
+
+                    <!-- Card 2: Player -->
+                    <div class="card" data-index="2">
+                        <div class="card-bg" style="background-image: url('https://ik.imagekit.io/gopichakradhar/luffy/o4.jpeg');"></div>
+                        <div class="audio-player">
+                            <div class="player-header">
+                                <span class="player-status">Capítulo 2</span>
+                                <button class="btn-control btn-restart" onclick="restartAudio(event, 2)">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                </button>
+                            </div>
+                            <div class="play-wrapper">
+                                <button class="btn-control btn-play" id="playBtn-2" onclick="togglePlay(event, 2)">
+                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </button>
+                            </div>
+                            <div class="progress-container">
+                                <div class="time-info"><span id="currentTime-2">0:00</span><span id="duration-2">0:00</span></div>
+                                <input type="range" id="progress-2" value="0" min="0" step="1" oninput="seekAudio(event, 2)">
+                            </div>
+                            <audio id="audio-2" src="audio/capitulo2.mp3" preload="metadata"></audio>
+                        </div>
+                    </div>
+
+                    <!-- Card 3: Player -->
+                    <div class="card" data-index="3">
+                        <div class="card-bg" style="background-image: url('https://ik.imagekit.io/gopichakradhar/luffy/o3.jpeg');"></div>
+                        <div class="audio-player">
+                            <div class="player-header">
+                                <span class="player-status">Capítulo 3</span>
+                                <button class="btn-control btn-restart" onclick="restartAudio(event, 3)">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                </button>
+                            </div>
+                            <div class="play-wrapper">
+                                <button class="btn-control btn-play" id="playBtn-3" onclick="togglePlay(event, 3)">
+                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </button>
+                            </div>
+                            <div class="progress-container">
+                                <div class="time-info"><span id="currentTime-3">0:00</span><span id="duration-3">0:00</span></div>
+                                <input type="range" id="progress-3" value="0" min="0" step="1" oninput="seekAudio(event, 3)">
+                            </div>
+                            <audio id="audio-3" src="audio/capitulo3.mp3" preload="metadata"></audio>
+                        </div>
+                    </div>
+
+                    <!-- Card 4: Player -->
+                    <div class="card" data-index="4">
+                        <div class="card-bg" style="background-image: url('https://ik.imagekit.io/gopichakradhar/luffy/o5.jpeg');"></div>
+                        <div class="audio-player">
+                            <div class="player-header">
+                                <span class="player-status">Capítulo 4</span>
+                                <button class="btn-control btn-restart" onclick="restartAudio(event, 4)">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                </button>
+                            </div>
+                            <div class="play-wrapper">
+                                <button class="btn-control btn-play" id="playBtn-4" onclick="togglePlay(event, 4)">
+                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </button>
+                            </div>
+                            <div class="progress-container">
+                                <div class="time-info"><span id="currentTime-4">0:00</span><span id="duration-4">0:00</span></div>
+                                <input type="range" id="progress-4" value="0" min="0" step="1" oninput="seekAudio(event, 4)">
+                            </div>
+                            <audio id="audio-4" src="audio/capitulo4.mp3" preload="metadata"></audio>
+                        </div>
+                    </div>
+
+                    <!-- Card 5: Player -->
+                    <div class="card" data-index="5">
+                        <div class="card-bg" style="background-image: url('https://ik.imagekit.io/gopichakradhar/luffy/o6.jpeg');"></div>
+                        <div class="audio-player">
+                            <div class="player-header">
+                                <span class="player-status">Capítulo 5</span>
+                                <button class="btn-control btn-restart" onclick="restartAudio(event, 5)">
+                                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="2"><path d="M23 4v6h-6"></path><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"></path></svg>
+                                </button>
+                            </div>
+                            <div class="play-wrapper">
+                                <button class="btn-control btn-play" id="playBtn-5" onclick="togglePlay(event, 5)">
+                                    <svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                                </button>
+                            </div>
+                            <div class="progress-container">
+                                <div class="time-info"><span id="currentTime-5">0:00</span><span id="duration-5">0:00</span></div>
+                                <input type="range" id="progress-5" value="0" min="0" step="1" oninput="seekAudio(event, 5)">
+                            </div>
+                            <audio id="audio-5" src="audio/capitulo5.mp3" preload="metadata"></audio>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <div class="controls-section">
+            <div class="member-info">
+                <h2 class="member-name">La Lupa</h2>
+                <p class="member-role">Del Fago</p>
+            </div>
+
+            <div class="dots">
+                <div class="dot active" data-index="0"></div>
+                <div class="dot" data-index="1"></div>
+                <div class="dot" data-index="2"></div>
+                <div class="dot" data-index="3"></div>
+                <div class="dot" data-index="4"></div>
+                <div class="dot" data-index="5"></div>
+            </div>
+        </div>
+        
+        <div class="scroll-hint">Usa el scroll para navegar</div>
+    </div>
+
+<script>
+    const teamMembers = [
+        { name: "La Lupa", role: "Del Fago" },
+        { name: "Capítulo 1", role: "nos hicieron humanos" },
+        { name: "Capítulo 2", role: "pandemias olvidadas" },
+        { name: "Capítulo 3", role: "armas invisibles" },
+        { name: "Capítulo 4", role: "virus zombie" },
+        { name: "Capítulo 5", role: "virus que curan" }
+    ];
+
+    const cards = document.querySelectorAll(".card");
+    const dots = document.querySelectorAll(".dot");
+    const memberName = document.querySelector(".member-name");
+    const memberRole = document.querySelector(".member-role");
+    
+    let currentIndex = 0;
+    let isAnimating = false;
+
+    // --- Audio Player Logic ---
+    const playIcon = '<svg viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>';
+    const pauseIcon = '<svg viewBox="0 0 24 24"><path d="M6 19h4V5H6v14zm8-14v14h4V5h-4z"/></svg>';
+
+    function formatTime(seconds) {
+        if(isNaN(seconds)) return "0:00";
+        const minutes = Math.floor(seconds / 60);
+        const secs = Math.floor(seconds % 60);
+        return `${minutes}:${secs < 10 ? '0' : ''}${secs}`;
+    }
+
+    function togglePlay(event, index) {
+        event.stopPropagation();
+        
+        const audio = document.getElementById(`audio-${index}`);
+        if (!audio) return;
+
+        const btn = document.getElementById(`playBtn-${index}`);
+        
+        cards.forEach((_, i) => {
+            if (i !== index) {
+                const otherAudio = document.getElementById(`audio-${i}`);
+                const otherBtn = document.getElementById(`playBtn-${i}`);
+                if (otherAudio && !otherAudio.paused) {
+                    otherAudio.pause();
+                    if(otherBtn) {
+                        otherBtn.innerHTML = playIcon;
+                        otherBtn.classList.remove('playing');
+                    }
+                }
+            }
+        });
+
+        if (audio.paused) {
+            audio.play();
+            btn.innerHTML = pauseIcon;
+            btn.classList.add('playing');
+        } else {
+            audio.pause();
+            btn.innerHTML = playIcon;
+            btn.classList.remove('playing');
+        }
+    }
+
+    function restartAudio(event, index) {
+        event.stopPropagation();
+        const audio = document.getElementById(`audio-${index}`);
+        if(audio) {
+            audio.currentTime = 0;
+        }
+    }
+
+    function seekAudio(event, index) {
+        event.stopPropagation();
+        const audio = document.getElementById(`audio-${index}`);
+        const slider = document.getElementById(`progress-${index}`);
+        if(audio && slider) {
+            const val = slider.value;
+            audio.currentTime = val;
+        }
+    }
+
+    // Initialize Audio Events
+    cards.forEach((card, index) => {
+        const audio = document.getElementById(`audio-${index}`);
+        
+        if (audio) {
+            const progressBar = document.getElementById(`progress-${index}`);
+            const currentTimeEl = document.getElementById(`currentTime-${index}`);
+            const durationEl = document.getElementById(`duration-${index}`);
+            const playBtn = document.getElementById(`playBtn-${index}`);
+
+            audio.addEventListener('loadedmetadata', () => {
+                progressBar.max = Math.floor(audio.duration);
+                durationEl.textContent = formatTime(audio.duration);
+            });
+
+            audio.addEventListener('timeupdate', () => {
+                progressBar.value = Math.floor(audio.currentTime);
+                currentTimeEl.textContent = formatTime(audio.currentTime);
+            });
+
+            audio.addEventListener('ended', () => {
+                playBtn.innerHTML = playIcon;
+                playBtn.classList.remove('playing');
+                progressBar.value = 0;
+                currentTimeEl.textContent = "0:00";
+            });
+        }
+        
+        // --- CAMBIO: Se eliminó el evento 'click' en la tarjeta ---
+        // Anteriormente aquí se llamaba a updateCarousel(index)
+    });
+
+    // --- Carousel Logic ---
+
+    function updateCarousel(newIndex) {
+        // Simple protección: si estamos animando, no hacemos nada
+        if (isAnimating) return;
+        
+        // Bloqueamos
+        isAnimating = true;
+
+        const currentAudio = document.getElementById(`audio-${currentIndex}`);
+        const currentBtn = document.getElementById(`playBtn-${currentIndex}`);
+        if(currentAudio && !currentAudio.paused) {
+            currentAudio.pause();
+            if(currentBtn) {
+                currentBtn.innerHTML = playIcon;
+                currentBtn.classList.remove('playing');
+            }
+        }
+
+        currentIndex = (newIndex + cards.length) % cards.length;
+
+        cards.forEach((card, i) => {
+            const offset = (i - currentIndex + cards.length) % cards.length;
+
+            card.classList.remove("center", "up-1", "up-2", "down-1", "down-2", "hidden");
+
+            if (offset === 0) {
+                card.classList.add("center");
+            } else if (offset === 1) {
+                card.classList.add("down-1");
+            } else if (offset === 2) {
+                card.classList.add("down-2");
+            } else if (offset === cards.length - 1) {
+                card.classList.add("up-1");
+            } else if (offset === cards.length - 2) {
+                card.classList.add("up-2");
+            } else {
+                card.classList.add("hidden");
+            }
+        });
+
+        dots.forEach((dot, i) => {
+            dot.classList.toggle("active", i === currentIndex);
+        });
+
+        memberName.style.opacity = "0";
+        memberRole.style.opacity = "0";
+
+        setTimeout(() => {
+            memberName.textContent = teamMembers[currentIndex].name;
+            memberRole.textContent = teamMembers[currentIndex].role;
+            memberName.style.opacity = "1";
+            memberRole.style.opacity = "1";
+        }, 300);
+
+        // --- CAMBIO: Desbloqueo más rápido (800ms) ---
+        setTimeout(() => {
+            isAnimating = false;
+        }, 800); 
+    }
+
+    // --- EVENTOS DE SCROLL (THROTTLE) ---
+    
+    document.addEventListener('wheel', (e) => {
+        // 1. Si ya se está animando, ignoramos todo
+        if (isAnimating) return;
+
+        // 2. Umbral mínimo
+        if (Math.abs(e.deltaY) < 15) return;
+
+        // 3. Ejecutamos movimiento
+        if (e.deltaY > 0) {
+            updateCarousel(currentIndex + 1);
+        } else if (e.deltaY < 0) {
+            updateCarousel(currentIndex - 1);
+        }
+        
+    }, { passive: true });
+
+    dots.forEach((dot, i) => {
+        dot.addEventListener("click", () => {
+            updateCarousel(i);
+        });
+    });
+
+    // --- CAMBIO: Teclas laterales agregadas ---
+    document.addEventListener("keydown", (e) => {
+        // Flecha Arriba o Izquierda -> Anterior
+        if (e.key === "ArrowUp" || e.key === "ArrowLeft") {
+            updateCarousel(currentIndex - 1);
+        } 
+        // Flecha Abajo o Derecha -> Siguiente
+        else if (e.key === "ArrowDown" || e.key === "ArrowRight") {
+            updateCarousel(currentIndex + 1);
+        }
+    });
+
+    // Touch logic (Swipe para móviles)
+    let touchStartX = 0;
+    let touchEndX = 0;
+
+    document.addEventListener("touchstart", (e) => {
+        touchStartX = e.changedTouches[0].screenY;
+    });
+
+    document.addEventListener("touchend", (e) => {
+        touchEndX = e.changedTouches[0].screenY;
+        handleSwipe();
+    });
+
+    function handleSwipe() {
+        const swipeThreshold = 50;
+        const diff = touchStartX - touchEndX;
+
+        if (Math.abs(diff) > swipeThreshold) {
+            if (diff > 0) {
+                updateCarousel(currentIndex + 1);
+            } else {
+                updateCarousel(currentIndex - 1);
+            }
+        }
+    }
+
+    updateCarousel(0);
+</script>
+</body>
+</html>
